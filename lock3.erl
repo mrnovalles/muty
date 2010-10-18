@@ -1,70 +1,73 @@
--module(lock3).
--export([init/2]).
+-module(lock2).
+-export([init/3]).
 
-init(Priority, Nodes) ->
-	Time = 0,
-	open(Time, Priority,Nodes).
+%lock3:
 
-open(MyTime, Priority,Nodes) ->
+init(MyId, Nodes,MyClock) ->	%when the lock is started it is given a unique ID: MyId
+	MyClock = 0,
+	open(Nodes, MyId, MyClock).
+		
+
+open(Nodes, MyId, MyClock) ->
 	receive
-		{take, Master} ->	%my worker wants the lock. not any other worker
-			Refs = requests(Time, Priority, Nodes),	% inform all other locks that i need to be taken
-			wait(Nodes , Time, Priority, Master, Refs, []);	%and enter waiting state
-		{request,Time,_, From, Ref} ->	%request from another lock
-			if
-				Time > MyTime -> %check if recved time 
-					MyTime = Time +1,
-				true ->
-					MyTime = MyTime +1,
-			end;
-					From ! {ok, Ref},	%immediately reply ok (i'm in open state) 
-					open(MyTime, Priority,Nodes);	%and enter open state again
+		{take, Master} ->	%my worker wants the lock
+			Refs = requests(Nodes, MyId, MyClock),	%inform all other locks that i need to be taken
+			wait(Nodes, Master, Refs, [], MyId, MyClock, MyClock);	%and enter waiting state MyClock twice, 1 will change the other not
+		{request, From, Ref, _, Clock} ->	%request from another lock
+			NewClock = lists:max([MyClock,Clock]) + 1, 
+			From ! {ok, Ref, NewClock},	%immediately reply ok (i'm in open state) 
+			open(Nodes, MyId, NewClock);	%and enter open state again
 		stop ->
 			ok
 	end.
 
-requests(Priority,Nodes) ->	%send a request message to all locks
-	lists:map(fun(P) -> R = make_ref(), P ! {request, Time,Priority ,self(), R}, R end, Nodes).
+requests(Nodes, MyId, MyClock) ->	%send a request message to all locks
+	lists:map(fun(P) -> R = make_ref(), P ! {request, self(), R, MyId, MyClock}, R end, Nodes).	%I send my ID together with the request message.
 
-wait(Nodes,MyTime, Priority, Master, [], Waiting) ->	%waiting state with empty list of locks -- all of the locks sent me an ok message!! -> I can take the lock!
+wait(Nodes, Master, [], Waiting, MyId,MyClock, MyReqClock) ->	%waiting state with empty list of locks -- all of the locks sent me an ok message!! -> I can take the lock!
 	Master ! taken,		%the lock is taken
-	held(MyTime, Priority,Nodes, Waiting);	%enter the held state
+	held(Nodes, Waiting, MyId, MyClock);	%enter the held state
 
-wait(Nodes, MyTime, MyPriority, Master, Refs, Waiting) ->	%waiting for ok messages. Master is my worker. Refs is the list of nodes waiting to delete from after getting an ok, and Waiting is the list of nodes I am waiting to get the ok from.
+wait(Nodes, Master, Refs, Waiting, MyId, MyClock, MyReqClock) ->	%waiting for ok messages
 	receive
-		{request,Time, Priority,From, Ref} ->	%another lock sent me a req message.I keep it in a list(Waiting) to sent back an ok msg //Ref is the answer to a unique request
-		%TODO Check if the incoming req was sent before mine. If it cannot be determine check the Priority 
-		if Time > MyTime ->
-		%UPDATE MY TIME	
-		true ->
-		
-		if
-			MyPriority > Priority -> %if the request has a higher priority
-				From ! { ok, Ref},
-				Refs = requests(MyPriority, From), %only requesting another OK to From 
-				%another request is sent so thar it can assure that there aren't 2 processes inside the critical zone at any time
-				wait(MyPriority,Nodes, Master, Refs, Waiting); % wait again for the Ok to come here instead of Open
+	%Req msg now haas MyId and also MyClock to compare to it.
+		{request, From, Ref, Req_Id, Req_Clock} ->
+			NewClock = lists:max([MyClock,Clock]) + 1, %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			if 
+				MyReqClock > Req_Clock ->
+				From ! {ok, Ref, NewClock} %we send the New Clock Value value to the other process to update its clock			
 				
-		true->
-			wait(Nodes, MyPriority, Master, Refs, [{From, Ref}|Waiting])	%I add a new node to Waiting
-		end;
-				
+			if
+				MyId > Req_Id ->	%The requesting lock has higher priority
+				From ! {ok, Ref},	%send an ok message to it!	
+				%send another request to the lock with higher priority
+				%to ensure the "happened before" order
+				Ref2 = requests([From], MyId),
+				wait(Nodes, Master, Ref2, Waiting, MyId);	%and enter waiting state
+				% NOT back to open state -> back to WAIT state!!!
+			
+				true ->	%I have higher priority: I keep the request and I go on :p
+				wait(Nodes, Master, Refs, [{From, Ref}|Waiting], MyId)
+			end;
 		{ok, Ref} ->	%i received an ok message from a lock
 			Refs2 = lists:delete(Ref, Refs),	%and I delete it from my list
-			wait(MyPriority,Nodes, Master, Refs2, Waiting);	%waiting for the rest of the ok messages
-		release ->	%I have to relesae the lock
+			wait(Nodes, Master, Refs2, Waiting, MyId);	%waiting for the rest of the ok messages
+		release ->	%I have to release the lock
 			ok(Waiting),	%I sent ok messages to the locks that requested me while I was waiting
-			open(MyPriority,Nodes)	%back to open state
+			open(Nodes, MyId)	%back to open state
 	end.
 
 ok(Waiting) ->	%send ok message
 	lists:map(fun({F,R}) -> F ! {ok, R} end, Waiting).
 
-held(Priority,Nodes, Waiting) ->	%The lock is mine!!!
+held(Nodes, Waiting, MyId) ->	%The lock is mine!!!
 	receive
-		{request,Priority, From, Ref} ->	%I keep on accepting requests from other locks to send them ok afterwards
-			held(Priority,Nodes, [{From, Ref}|Waiting]);
+		{request, From, Ref, _} ->	%I keep on accepting requests from other locks to send them ok afterwards
+			held(Nodes, [{From, Ref}|Waiting], MyId);
 		release ->	%release message from the worker -> I have to release the lock
 			ok(Waiting),	%I inform the waiting locks!
-			open(Priority,Nodes)	%back to open state!!
+			open(Nodes, MyId)	%back to open state!!
 	end.
