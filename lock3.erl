@@ -1,4 +1,4 @@
--module(lock2).
+-module(lock3).
 -export([init/3]).
 
 %lock3:
@@ -24,7 +24,7 @@ open(Nodes, MyId, MyClock) ->
 requests(Nodes, MyId, MyClock) ->	%send a request message to all locks
 	lists:map(fun(P) -> R = make_ref(), P ! {request, self(), R, MyId, MyClock}, R end, Nodes).	%I send my ID together with the request message.
 
-wait(Nodes, Master, [], Waiting, MyId, MyClock, MyReqClock) ->	%waiting state with empty list of locks -- all of the locks sent me an ok message!! -> I can take the lock!
+wait(Nodes, Master, [], Waiting, MyId, MyClock, _) ->	%waiting state with empty list of locks -- all of the locks sent me an ok message!! -> I can take the lock!
 	Master ! taken,		%the lock is taken
 	held(Nodes, Waiting, MyId, MyClock);	%enter the held state
 
@@ -33,12 +33,13 @@ wait(Nodes, Master, Refs, Waiting, MyId, MyClock, MyReqClock) ->	%waiting for ok
 	receive
 	%Req msg now has MyId and also MyClock to compare to it.
 		{request, From, Ref, Req_Id, Req_Clock} ->
-				NewClock = lists:max([MyClock,Clock]) + 1, %%
+				NewClock = lists:max([MyClock,Req_Clock]) + 1, %%
 			if 
 				MyReqClock > Req_Clock ->
 					From ! {ok, Ref, NewClock}, %we send Ok and also the NewClock value to the other process to update its clock
 					Ref4 = requests([From], MyId, MyReqClock), %% MyReqClock or NewClock ? WHICH ONE
 					wait(Nodes,Master, Ref4, Waiting, MyId, NewClock, MyReqClock);
+					
 				MyReqClock == Req_Clock -> 
 					if
 					MyId > Req_Id ->	%The requesting lock has higher priority
@@ -50,12 +51,12 @@ wait(Nodes, Master, Refs, Waiting, MyId, MyClock, MyReqClock) ->	%waiting for ok
 						% NOT back to open state -> back to WAIT state!!!
 		
 					true ->	%I have higher priority: I keep the request and I go on :p
-						wait(Nodes, Master, Refs, [{From, Ref, Req_Clock}|Waiting], MyId,NewClock, MyReqClock);
+						wait(Nodes, Master, Refs, [{From, Ref, Req_Clock}|Waiting], MyId,NewClock, MyReqClock)
 					end;
 					
 				true -> %% the req is 
-					wait(Nodes,Master, Ref, Waiting, MyId, NewClock, MyReqClock);
-			end;	
+					wait(Nodes,Master, Ref, Waiting, MyId, NewClock, MyReqClock)
+			end;
 		
 		{ok, Ref, Clock} ->	%i received an ok message from a lock
 			NewClock2 = lists:max([MyClock,Clock]) + 1,
@@ -64,7 +65,7 @@ wait(Nodes, Master, Refs, Waiting, MyId, MyClock, MyReqClock) ->	%waiting for ok
 		
 		release ->	%I have to release the lock
 			ok(Waiting),	%I sent ok messages to the locks that requested me while I was waiting
-			open(Nodes, MyId, NewClock),	%back to open state
+			open(Nodes, MyId, MyClock)	%back to open state
 	end.
 
 ok(Waiting) ->	%send ok message
