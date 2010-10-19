@@ -1,0 +1,321 @@
+#LyX 1.6.5 created this file. For more info see http://www.lyx.org/
+\lyxformat 345
+\begin_document
+\begin_header
+\textclass article
+\begin_preamble
+% Very simple template for lab reports. Most common packages are already included.
+% Change according your file encoding
+
+
+%opening
+\title{SeminarReport:seminarID(e.g.Chatty)}\author{Yourname}\date{\today{}}
+\end_preamble
+\use_default_options false
+\language english
+\inputencoding utf8
+\font_roman default
+\font_sans default
+\font_typewriter default
+\font_default_family default
+\font_sc false
+\font_osf false
+\font_sf_scale 100
+\font_tt_scale 100
+
+\graphics default
+\paperfontsize 11
+\spacing single
+\use_hyperref false
+\papersize a4paper
+\use_geometry false
+\use_amsmath 1
+\use_esint 1
+\cite_engine basic
+\use_bibtopic false
+\paperorientation portrait
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\defskip medskip
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\author "" 
+\end_header
+
+\begin_body
+
+\begin_layout Title
+Seminar report : Muty
+\end_layout
+
+\begin_layout Author
+Mariano Vallés
+\end_layout
+
+\begin_layout Section
+Introduction
+\end_layout
+
+\begin_layout Standard
+
+\shape italic
+Introduce the main topic related to distributed systems covered in this
+ seminar and justify its importance.
+ Summarize the work you have done
+\end_layout
+
+\begin_layout Standard
+The topic discussed in this seminar were the mutual exclusion locks.
+ It is an important subject of Distributed Systems, because it shows how
+ a correct division of the use of a resource, or a critical zone, can reduce
+ the number of not-at-all desired deadlocks in a Distributed System.
+\end_layout
+
+\begin_layout Standard
+We have implemented three versions of distributed locks, the first one which
+ produced an excessive amount of deadlocks, the second one using priorities,
+ which ended up being an unfair schedule, and the third one using Lamport
+ clocks.
+ Each of the implementations communicated through multicast messages between
+ the different locks.
+\end_layout
+
+\begin_layout Section
+Main issues and solutions
+\end_layout
+
+\begin_layout Standard
+
+\shape italic
+Summarize the main issues arised in the seminar, your proposed solutions,
+ and the problems you have encountered to carry out these solutions.
+ You do not need to copy&paste your code.
+ Only if needed, you may write down small code snippets to show how you
+ have solved a specific problem/question.
+\end_layout
+
+\begin_layout Standard
+As mentioned before, the first implementation, had the problem of being
+ a really simple implementation of a lock, but it did not provide a method
+ to decide which of two locks would get access to the critical zone, therefore
+ resulting in a deadlock situation.
+ as this was expected, after a deadlock, there was a 
+\emph on
+timeout 
+\emph default
+value in each worker to know when to give up.
+\end_layout
+
+\begin_layout Standard
+Although lock1 worked correctly, when we increased the risk of conflict
+ the deadlock situations also increase.
+\end_layout
+
+\begin_layout Standard
+In the second lock (lock2), we introduced the concept of priority of processes,
+ we assigned an id to each lock, and then when two locks wanted to enter
+ the critical zone, ok message was sent to the one with higher priority
+ and the other one was sent to 
+\emph on
+wait 
+\emph default
+state again.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset Graphics
+	filename graficos/Diapositiva1.PNG
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Lock2.Two-processes-critical"
+
+\end_inset
+
+Lock2.Two processes entering the critical zone
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Lock2.Two-processes-critical"
+
+\end_inset
+
+ shows the interaction of 4 processes using the proposed solution of priority
+ assigment.
+ The problem that arises in this scenario is that 
+\series bold
+P2
+\series default
+ after sending 
+\emph on
+ok
+\emph default
+ thus granting access to the critical zone to (
+\series bold
+P0
+\series default
+) with higher priority, could also enter the critical zone, after receiving
+ a delayed 
+\emph on
+ok
+\emph default
+ message from 
+\series bold
+P1
+\series default
+.
+ 
+\end_layout
+
+\begin_layout Standard
+To solve this situation, an additional request message is sent from 
+\series bold
+P4
+\series default
+ only to 
+\series bold
+P0
+\series default
+,to guarantee that the happened before order is preserved.
+ This is observed in Figure .
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset Graphics
+	filename graficos/Diapositiva2.PNG
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Lock2.-Only-1-critical"
+
+\end_inset
+
+Lock2.
+ Only one P entering the critical zone.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The third implementation of the lock (lock3) also adds to the previous one,
+ the use of Lamport clocks to determine the logical time a request was sent,
+ in order to preserve a happened before order.
+\end_layout
+
+\begin_layout Standard
+We implemented a lock, that as well as incrementing its clock whenever it
+ received a 
+\emph on
+request
+\emph default
+ or an 
+\emph on
+ok 
+\emph default
+message, it also saved a clock for the requests it issued, therefore entering
+ the wait state with two variables storing the clock.
+ The definition of the wait function was :
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+wait(Nodes, Master, Refs, Waiting, MyId, MyClock, MyReqClock)
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Section
+Evaluation
+\end_layout
+
+\begin_layout Standard
+
+\shape italic
+If needed, you may provide figures or tables with the main results evaluating
+ your proposals.
+\end_layout
+
+\begin_layout Section
+Conclusions
+\end_layout
+
+\begin_layout Standard
+
+\shape italic
+Describe the lessons you have learnt in this seminar, and give your opinion
+ about it
+\end_layout
+
+\begin_layout Standard
+You may change the organization of this template as you want.
+ It's only for your guidance but if you feel that you need a different structure
+, feel free to change it.
+\end_layout
+
+\end_body
+\end_document
