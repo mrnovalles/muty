@@ -10,7 +10,7 @@ register(l1, spawn(Lock, init,[1, [l2,l3,l4]])),
 	register(paul,spawn(worker, init, [paul, l3,43,Sleep,Work])),
 	register(george, spawn(worker, init, [george,l4,72,Sleep,Work])),
 	ok.
-	stop() ->
+stop() ->
 	john ! stop,
 	ringo ! stop,
 	paul ! stop,
