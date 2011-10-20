@@ -1,0 +1,7 @@
+muty: Distributed Lock system in Erlang
+=======================================
+This project was developed as part of the SODX master course
+in UPC Barcelona Catalunya during Spring fall semester 2011
+
+Original problem proposition by Johan Montelius
+http://web.it.kth.se/~johanmon/dse.html
